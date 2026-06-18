@@ -15,6 +15,7 @@ import {
   normalizeCodexStreamChunk,
 } from "../../../../shared/codex-tool-normalizer"
 import { getClaudeShellEnvironment } from "../../claude/env"
+import { resolveCliBinaryPath } from "../../cli-binaries"
 import { resolveProjectPathFromWorktree } from "../../claude-config"
 import { getDatabase, projects as projectsTable, subChats } from "../../db"
 import {
@@ -136,7 +137,7 @@ const AUTH_HINTS = [
   "401",
   "403",
 ]
-const DEFAULT_CODEX_MODEL = "gpt-5.3-codex/high"
+const DEFAULT_CODEX_MODEL = "gpt-5.5/high"
 const CODEX_MCP_TOOLS_FETCH_TIMEOUT_MS = 40_000
 const CODEX_USAGE_POLL_ATTEMPTS = 3
 const CODEX_USAGE_POLL_INTERVAL_MS = 200
@@ -246,17 +247,15 @@ function resolveBundledCodexCliPath(): string {
       )
 
   const binaryPath = join(resourcesDir, binaryName)
-  if (existsSync(binaryPath)) {
-    return binaryPath
-  }
-
-  const hint = app.isPackaged
+  const downloadHint = app.isPackaged
     ? "Binary is missing from bundled resources."
-    : "Run `bun run codex:download` to download it for local dev."
+    : "Run `bun run codex:download` or install Codex CLI globally."
 
-  throw new Error(
-    `[codex] Bundled Codex CLI not found at ${binaryPath}. ${hint}`,
-  )
+  return resolveCliBinaryPath({
+    bundledPath: binaryPath,
+    commandName: "codex",
+    downloadHint,
+  })
 }
 
 function stripAnsi(input: string): string {

@@ -23,6 +23,8 @@ if (process.env.FORCE_ANALYTICS === "true") {
 
 // Expose desktop-specific APIs
 contextBridge.exposeInMainWorld("desktopApi", {
+  isElectron: true,
+
   // Platform info
   platform: process.platform,
   arch: process.arch,

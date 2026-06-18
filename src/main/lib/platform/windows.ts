@@ -53,6 +53,7 @@ export class WindowsPlatformProvider extends BasePlatformProvider {
         path.join(home, ".cargo", "bin"),
         path.join(home, "scoop", "shims"),
         path.join(home, "AppData", "Local", "pnpm"),
+        path.join(home, "AppData", "Local", "cursor-agent"),
       ],
     }
   }

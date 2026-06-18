@@ -25,6 +25,9 @@ export interface WorktreeSetupFailurePayload {
 }
 
 export interface DesktopApi {
+  /** True in Electron preload; false in browser web stub */
+  isElectron: boolean
+
   // Platform info
   platform: NodeJS.Platform
   arch: string
@@ -70,6 +73,13 @@ export interface DesktopApi {
   showNotification: (options: { title: string; body: string }) => Promise<void>
   openExternal: (url: string) => Promise<void>
   getApiBaseUrl: () => Promise<string>
+  signedFetch: (
+    url: string,
+    options?: { method?: string; body?: string; headers?: Record<string, string> },
+  ) => Promise<{ ok: boolean; status: number; data: unknown; error: string | null }>
+  setWindowTitle: (title: string) => Promise<void>
+  getWindowFrameState: () => Promise<boolean>
+  onShortcutOpenSettings: (callback: () => void) => () => void
 
   // Clipboard
   clipboardWrite: (text: string) => Promise<void>

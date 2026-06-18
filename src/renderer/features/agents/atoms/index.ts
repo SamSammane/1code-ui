@@ -220,7 +220,7 @@ export const lastSelectedModelIdAtom = atomWithStorage<string>(
 
 export const lastSelectedCodexModelIdAtom = atomWithStorage<string>(
   "agents:lastSelectedCodexModelId",
-  "gpt-5.3-codex",
+  "gpt-5.5",
   undefined,
   { getOnInit: true },
 )
@@ -230,6 +230,13 @@ export type CodexThinkingPreference = "low" | "medium" | "high" | "xhigh"
 export const lastSelectedCodexThinkingAtom = atomWithStorage<CodexThinkingPreference>(
   "agents:lastSelectedCodexThinking",
   "high",
+  undefined,
+  { getOnInit: true },
+)
+
+export const lastSelectedCursorModelIdAtom = atomWithStorage<string>(
+  "agents:lastSelectedCursorModelId",
+  "composer-2.5",
   undefined,
   { getOnInit: true },
 )
@@ -300,6 +307,36 @@ const subChatCodexThinkingStorageAtom = atomWithStorage<
   {},
   undefined,
   { getOnInit: true },
+)
+
+const subChatCursorModelIdsStorageAtom = atomWithStorage<Record<string, string>>(
+  "agents:subChatCursorModelIds",
+  {},
+  undefined,
+  { getOnInit: true },
+)
+
+export const subChatCursorModelIdAtomFamily = atomFamily((subChatId: string) =>
+  atom(
+    (get) => {
+      if (!subChatId) return get(lastSelectedCursorModelIdAtom)
+      return (
+        get(subChatCursorModelIdsStorageAtom)[subChatId] ??
+        get(lastSelectedCursorModelIdAtom)
+      )
+    },
+    (get, set, newModelId: string) => {
+      if (!subChatId) {
+        set(lastSelectedCursorModelIdAtom, newModelId)
+        return
+      }
+      const current = get(subChatCursorModelIdsStorageAtom)
+      set(subChatCursorModelIdsStorageAtom, {
+        ...current,
+        [subChatId]: newModelId,
+      })
+    },
+  ),
 )
 
 export const subChatCodexThinkingAtomFamily = atomFamily((subChatId: string) =>
@@ -705,7 +742,7 @@ export const pendingConflictResolutionMessageAtom = atom<{ message: string; subC
 // After successful OAuth flow, this triggers automatic retry of the message
 export type PendingAuthRetryMessage = {
   subChatId: string  // Required: only retry in the correct chat
-  provider: "claude-code" | "codex"
+  provider: "claude-code" | "codex" | "cursor"
   prompt: string
   images?: Array<{
     base64Data: string

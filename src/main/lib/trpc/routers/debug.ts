@@ -2,6 +2,7 @@ import { router, publicProcedure } from "../index"
 import { getDatabase, projects, chats, subChats } from "../../db"
 import { app, shell } from "electron"
 import { getAuthManager } from "../../../index"
+import { isVendorAuthEnabled } from "../../config"
 import { z } from "zod"
 import { clearNetworkCache } from "../../ollama/network-detector"
 
@@ -44,6 +45,7 @@ export const debugRouter = router({
       platform: process.platform,
       arch: process.arch,
       isDev: IS_DEV,
+      vendorAuthEnabled: isVendorAuthEnabled(),
       userDataPath: app.getPath("userData"),
       protocolRegistered,
     }

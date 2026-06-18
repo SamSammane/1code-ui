@@ -16,6 +16,8 @@ import {
   SelectRepoPage,
 } from "./features/onboarding"
 import { identify, initAnalytics, shutdown } from "./lib/analytics"
+import { isDesktopApp, isWebStandalone } from "./lib/utils/platform"
+import { WebErrorBoundary } from "./components/web-error-boundary"
 import {
   anthropicOnboardingCompletedAtom,
   apiKeyOnboardingCompletedAtom,
@@ -77,7 +79,7 @@ function AppContent() {
   // For restored windows (persisted localStorage), we need to claim here.
   // Read atom directly from store to avoid stale closure with empty deps.
   useEffect(() => {
-    if (!window.desktopApi?.claimChat) return
+    if (!isDesktopApp() || !window.desktopApi?.claimChat) return
     const currentChatId = appStore.get(selectedAgentChatIdAtom)
     if (!currentChatId) return
     window.desktopApi.claimChat(currentChatId).then((result) => {
@@ -158,11 +160,19 @@ function AppContent() {
     return <ApiKeyOnboardingPage />
   }
 
-  if (!validatedProject && !isLoadingProjects) {
+  if (!validatedProject) {
+    if (isLoadingProjects && selectedProject) {
+      return null
+    }
     return <SelectRepoPage />
   }
 
-  return <AgentsLayout />
+  const main = <AgentsLayout />
+  return isWebStandalone() ? (
+    <WebErrorBoundary>{main}</WebErrorBoundary>
+  ) : (
+    main
+  )
 }
 
 export function App() {

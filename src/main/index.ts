@@ -29,7 +29,9 @@ import {
 import { cleanupGitWatchers } from "./lib/git/watcher"
 import { cancelAllPendingOAuth, handleMcpOAuthCallback } from "./lib/mcp-auth"
 import { getAllMcpConfigHandler, hasActiveClaudeSessions, abortAllClaudeSessions } from "./lib/trpc/routers/claude"
+import { getAllCursorMcpConfigHandler } from "./lib/cursor-mcp"
 import { getAllCodexMcpConfigHandler, hasActiveCodexStreams, abortAllCodexStreams } from "./lib/trpc/routers/codex"
+import { hasActiveCursorStreams, abortAllCursorStreams } from "./lib/trpc/routers/cursor"
 import {
   createMainWindow,
   createWindow,
@@ -40,6 +42,7 @@ import {
 import { windowManager } from "./windows/window-manager"
 
 import { IS_DEV, AUTH_SERVER_PORT } from "./constants"
+import { getApiUrl, isVendorAuthEnabled } from "./lib/config"
 
 // Deep link protocol (must match package.json build.protocols.schemes)
 // Use different protocol in dev to avoid conflicts with production app
@@ -78,13 +81,8 @@ if (app.isPackaged && !IS_DEV) {
 }
 
 // URL configuration (exported for use in other modules)
-// In packaged app, ALWAYS use production URL to prevent localhost leaking into releases
-// In dev mode, allow override via MAIN_VITE_API_URL env variable
 export function getBaseUrl(): string {
-  if (app.isPackaged) {
-    return "https://21st.dev"
-  }
-  return import.meta.env.MAIN_VITE_API_URL || "https://21st.dev"
+  return getApiUrl()
 }
 
 export function getAppUrl(): string {
@@ -708,7 +706,7 @@ if (gotTheLock) {
               label: "Quit",
               accelerator: "CmdOrCtrl+Q",
               click: async () => {
-                if (hasActiveClaudeSessions() || hasActiveCodexStreams()) {
+                if (hasActiveClaudeSessions() || hasActiveCodexStreams() || hasActiveCursorStreams()) {
                   const { dialog } = await import("electron")
                   const { response } = await dialog.showMessageBox({
                     type: "warning",
@@ -722,6 +720,7 @@ if (gotTheLock) {
                   if (response === 1) {
                     abortAllClaudeSessions()
                     abortAllCodexStreams()
+                    abortAllCursorStreams()
                     setIsQuitting(true)
                     app.quit()
                   }
@@ -793,7 +792,7 @@ if (gotTheLock) {
               click: () => {
                 const win = BrowserWindow.getFocusedWindow()
                 if (!win) return
-                if (hasActiveClaudeSessions() || hasActiveCodexStreams()) {
+                if (hasActiveClaudeSessions() || hasActiveCodexStreams() || hasActiveCursorStreams()) {
                   dialog
                     .showMessageBox(win, {
                       type: "warning",
@@ -809,6 +808,7 @@ if (gotTheLock) {
                       if (response === 1) {
                         abortAllClaudeSessions()
                         abortAllCodexStreams()
+                        abortAllCursorStreams()
                         win.webContents.reloadIgnoringCache()
                       }
                     })
@@ -942,8 +942,8 @@ if (gotTheLock) {
     // Create main window
     createMainWindow()
 
-    // Initialize auto-updater (production only)
-    if (app.isPackaged) {
+    // Initialize auto-updater (production + vendor builds only)
+    if (app.isPackaged && isVendorAuthEnabled()) {
       await initAutoUpdater(getAllWindows)
       // Setup update check on window focus (instead of periodic interval)
       setupFocusUpdateCheck(getAllWindows)
@@ -960,6 +960,7 @@ if (gotTheLock) {
         const results = await Promise.allSettled([
           getAllMcpConfigHandler(),
           getAllCodexMcpConfigHandler(),
+          getAllCursorMcpConfigHandler(),
         ])
 
         if (results[0].status === "rejected") {
@@ -967,6 +968,9 @@ if (gotTheLock) {
         }
         if (results[1].status === "rejected") {
           console.error("[App] Codex MCP warmup failed:", results[1].reason)
+        }
+        if (results[2].status === "rejected") {
+          console.error("[App] Cursor MCP warmup failed:", results[2].reason)
         }
       } catch (error) {
         console.error("[App] MCP warmup failed:", error)

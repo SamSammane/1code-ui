@@ -25,11 +25,13 @@ import { useAgentsHotkeys } from "../agents/lib/agents-hotkeys-manager"
 import { toggleSearchAtom } from "../agents/search"
 import { ClaudeLoginModal } from "../../components/dialogs/claude-login-modal"
 import { CodexLoginModal } from "../../components/dialogs/codex-login-modal"
+import { CursorLoginModal } from "../../components/dialogs/cursor-login-modal"
 import { TooltipProvider } from "../../components/ui/tooltip"
 import { ResizableSidebar } from "../../components/ui/resizable-sidebar"
 import { AgentsSidebar } from "../sidebar/agents-sidebar"
 import { AgentsContent } from "../agents/ui/agents-content"
 import { UpdateBanner } from "../../components/update-banner"
+import { WebModeBanner } from "../../components/web-mode-banner"
 import { WindowsTitleBar } from "../../components/windows-title-bar"
 import { useUpdateChecker } from "../../lib/hooks/use-update-checker"
 import { useAgentSubChatStore } from "../agents/stores/sub-chat-store"
@@ -303,9 +305,10 @@ export function AgentsLayout() {
         autoStartAuth={claudeLoginModalConfig.autoStartAuth}
       />
       <CodexLoginModal />
+      <CursorLoginModal />
       <div className="flex flex-col w-full h-full relative overflow-hidden bg-background select-none">
-        {/* Windows Title Bar (only shown on Windows with frameless window) */}
-        <WindowsTitleBar />
+        <WebModeBanner />
+        {isDesktop && <WindowsTitleBar />}
         <div className="flex flex-1 overflow-hidden">
           {/* Left Sidebar - switches between chat list and settings nav */}
           <ResizableSidebar
@@ -340,8 +343,8 @@ export function AgentsLayout() {
           </div>
         </div>
 
-        {/* Update Banner */}
-        <UpdateBanner />
+        {/* Update Banner (desktop only) */}
+        {isDesktop && <UpdateBanner />}
       </div>
     </TooltipProvider>
   )

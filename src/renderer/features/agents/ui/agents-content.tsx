@@ -840,7 +840,7 @@ export function AgentsContent() {
 
   // Check if terminal can be shown (worktree exists - desktop only)
   const worktreePath = (chatData as any)?.worktreePath as string | undefined
-  const canShowTerminal = !!worktreePath
+  const canShowTerminal = isDesktopApp() && !!worktreePath
 
   // Terminal scope key for shared terminals
   const terminalScopeKey = useMemo(() => {

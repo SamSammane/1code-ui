@@ -69,6 +69,7 @@ export function AgentsHelpPopover({
   const setOpen = controlledOnOpenChange ?? setInternalOpen
 
   useEffect(() => {
+    if (!window.desktopApi?.signedFetch) return
     let cancelled = false
     window.desktopApi
       .signedFetch("https://21st.dev/api/changelog/desktop?per_page=3")

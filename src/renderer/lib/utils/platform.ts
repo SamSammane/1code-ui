@@ -6,11 +6,23 @@
  */
 
 /**
+ * Browser build via `bun run dev:web` (no Electron main/preload).
+ */
+export function isWebStandalone(): boolean {
+  return import.meta.env.VITE_WEB_STANDALONE === "true"
+}
+
+/**
  * Check if running inside Electron desktop app
  */
 export function isDesktopApp(): boolean {
   if (typeof window === "undefined") return false
-  return !!window.desktopApi
+  const api = window.desktopApi as (typeof window.desktopApi & {
+    isElectron?: boolean
+  }) | undefined
+  if (!api) return false
+  if (api.isElectron === false) return false
+  return api.isElectron === true || !isWebStandalone()
 }
 
 /**

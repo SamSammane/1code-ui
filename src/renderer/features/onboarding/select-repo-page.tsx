@@ -8,17 +8,21 @@ import { IconSpinner, GitHubIcon } from "../../components/ui/icons"
 import { Logo } from "../../components/ui/logo"
 import { Input } from "../../components/ui/input"
 import { trpc } from "../../lib/trpc"
+import { isWebStandalone } from "../../lib/utils/platform"
+import { WebModeBanner } from "../../components/web-mode-banner"
 import { selectedProjectAtom } from "../agents/atoms"
 
 export function SelectRepoPage() {
   const [, setSelectedProject] = useAtom(selectedProjectAtom)
   const [showClonePage, setShowClonePage] = useState(false)
   const [githubUrl, setGithubUrl] = useState("")
+  const [projectPath, setProjectPath] = useState("")
+  const isWeb = isWebStandalone()
 
   // Get tRPC utils for cache management
   const utils = trpc.useUtils()
 
-  // Open folder mutation
+  // Open folder mutation (desktop folder picker)
   const openFolder = trpc.projects.openFolder.useMutation({
     onSuccess: (project) => {
       if (project) {
@@ -29,6 +33,37 @@ export function SelectRepoPage() {
           if (exists) {
             return oldData.map((p) =>
               p.id === project.id ? { ...p, updatedAt: project.updatedAt } : p
+            )
+          }
+          return [project, ...oldData]
+        })
+
+        setSelectedProject({
+          id: project.id,
+          name: project.name,
+          path: project.path,
+          gitRemoteUrl: project.gitRemoteUrl,
+          gitProvider: project.gitProvider as
+            | "github"
+            | "gitlab"
+            | "bitbucket"
+            | null,
+          gitOwner: project.gitOwner,
+          gitRepo: project.gitRepo,
+        })
+      }
+    },
+  })
+
+  const createProject = trpc.projects.create.useMutation({
+    onSuccess: (project) => {
+      if (project) {
+        utils.projects.list.setData(undefined, (oldData) => {
+          if (!oldData) return [project]
+          const exists = oldData.some((p) => p.id === project.id)
+          if (exists) {
+            return oldData.map((p) =>
+              p.id === project.id ? { ...p, updatedAt: project.updatedAt } : p,
             )
           }
           return [project, ...oldData]
@@ -87,6 +122,12 @@ export function SelectRepoPage() {
 
   const handleOpenFolder = async () => {
     await openFolder.mutateAsync()
+  }
+
+  const handleAddProjectPath = async () => {
+    const path = projectPath.trim()
+    if (!path) return
+    await createProject.mutateAsync({ path })
   }
 
   const handleCloneFromGitHub = async () => {
@@ -173,7 +214,9 @@ export function SelectRepoPage() {
 
   // Main select repo page
   return (
-    <div className="h-screen w-screen flex flex-col items-center justify-center bg-background select-none">
+    <div className="h-screen w-screen flex flex-col bg-background select-none">
+      <WebModeBanner />
+      <div className="flex flex-1 flex-col items-center justify-center">
       {/* Draggable title bar area */}
       <div
         className="fixed top-0 left-0 right-0 h-10"
@@ -193,36 +236,68 @@ export function SelectRepoPage() {
               Select a repository
             </h1>
             <p className="text-sm text-muted-foreground">
-              Choose a local folder to start working with
+              {isWeb
+                ? "Enter the absolute path to a project on your machine"
+                : "Choose a local folder to start working with"}
             </p>
           </div>
         </div>
 
         {/* Content */}
         <div className="space-y-3">
-          <button
-            onClick={handleOpenFolder}
-            disabled={openFolder.isPending}
-            className="w-full h-8 px-4 bg-primary text-primary-foreground rounded-lg text-sm font-medium transition-[background-color,transform] duration-150 hover:bg-primary/90 active:scale-[0.97] shadow-[0_0_0_0.5px_rgb(23,23,23),inset_0_0_0_1px_rgba(255,255,255,0.14)] dark:shadow-[0_0_0_0.5px_rgb(23,23,23),inset_0_0_0_1px_rgba(255,255,255,0.14)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-          >
-            {openFolder.isPending ? (
-              <IconSpinner className="h-4 w-4" />
-            ) : (
-              "Select folder"
-            )}
-          </button>
-          <button
-            onClick={() => setShowClonePage(true)}
-            disabled={cloneFromGitHub.isPending}
-            className="w-full h-8 px-4 bg-muted text-foreground rounded-lg text-sm font-medium transition-[background-color,transform] duration-150 hover:bg-muted/80 active:scale-[0.97] shadow-[0_0_0_0.5px_rgb(23,23,23),inset_0_0_0_1px_rgba(255,255,255,0.06)] dark:shadow-[0_0_0_0.5px_rgb(23,23,23),inset_0_0_0_1px_rgba(255,255,255,0.06)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-          >
-            {cloneFromGitHub.isPending ? (
-              <IconSpinner className="h-4 w-4" />
-            ) : (
-              "Clone from GitHub"
-            )}
-          </button>
+          {isWeb ? (
+            <>
+              <Input
+                value={projectPath}
+                onChange={(e) => setProjectPath(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && projectPath.trim()) {
+                    void handleAddProjectPath()
+                  }
+                }}
+                placeholder="C:\Users\you\projects\my-app"
+                disabled={createProject.isPending}
+              />
+              <button
+                onClick={handleAddProjectPath}
+                disabled={createProject.isPending || !projectPath.trim()}
+                className="w-full h-8 px-4 bg-primary text-primary-foreground rounded-lg text-sm font-medium transition-[background-color,transform] duration-150 hover:bg-primary/90 active:scale-[0.97] shadow-[0_0_0_0.5px_rgb(23,23,23),inset_0_0_0_1px_rgba(255,255,255,0.14)] dark:shadow-[0_0_0_0.5px_rgb(23,23,23),inset_0_0_0_1px_rgba(255,255,255,0.14)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+              >
+                {createProject.isPending ? (
+                  <IconSpinner className="h-4 w-4" />
+                ) : (
+                  "Add project"
+                )}
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={handleOpenFolder}
+                disabled={openFolder.isPending}
+                className="w-full h-8 px-4 bg-primary text-primary-foreground rounded-lg text-sm font-medium transition-[background-color,transform] duration-150 hover:bg-primary/90 active:scale-[0.97] shadow-[0_0_0_0.5px_rgb(23,23,23),inset_0_0_0_1px_rgba(255,255,255,0.14)] dark:shadow-[0_0_0_0.5px_rgb(23,23,23),inset_0_0_0_1px_rgba(255,255,255,0.14)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+              >
+                {openFolder.isPending ? (
+                  <IconSpinner className="h-4 w-4" />
+                ) : (
+                  "Select folder"
+                )}
+              </button>
+              <button
+                onClick={() => setShowClonePage(true)}
+                disabled={cloneFromGitHub.isPending}
+                className="w-full h-8 px-4 bg-muted text-foreground rounded-lg text-sm font-medium transition-[background-color,transform] duration-150 hover:bg-muted/80 active:scale-[0.97] shadow-[0_0_0_0.5px_rgb(23,23,23),inset_0_0_0_1px_rgba(255,255,255,0.06)] dark:shadow-[0_0_0_0.5px_rgb(23,23,23),inset_0_0_0_1px_rgba(255,255,255,0.06)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+              >
+                {cloneFromGitHub.isPending ? (
+                  <IconSpinner className="h-4 w-4" />
+                ) : (
+                  "Clone from GitHub"
+                )}
+              </button>
+            </>
+          )}
         </div>
+      </div>
       </div>
     </div>
   )

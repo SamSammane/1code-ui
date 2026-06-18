@@ -27,12 +27,14 @@ import {
   PopoverTrigger,
 } from "../../../components/ui/popover"
 import { cn } from "../../../lib/utils"
+import { isWebStandalone } from "../../../lib/utils/platform"
 import {
   agentsDebugModeAtom,
   justCreatedIdsAtom,
   lastSelectedAgentIdAtom,
   lastSelectedCodexModelIdAtom,
   lastSelectedCodexThinkingAtom,
+  lastSelectedCursorModelIdAtom,
   lastSelectedBranchesAtom,
   lastSelectedModelIdAtom,
   lastSelectedRepoAtom,
@@ -106,7 +108,7 @@ import {
 } from "../../../components/ui/prompt-input"
 import { agentsSidebarOpenAtom, agentsUnseenChangesAtom } from "../atoms"
 import { AgentSendButton } from "../components/agent-send-button"
-import { AgentModelSelector } from "../components/agent-model-selector"
+import { AgentModelSelector, type AgentProviderId } from "../components/agent-model-selector"
 import { CreateBranchDialog } from "../components/create-branch-dialog"
 import { formatTimeAgo } from "../utils/format-time-ago"
 import { handlePasteEvent } from "../utils/paste-text"
@@ -121,6 +123,8 @@ import {
 import {
   CLAUDE_MODELS,
   CODEX_MODELS,
+  CODEX_SUBSCRIPTION_ONLY_MODEL_IDS,
+  CURSOR_MODELS,
   type CodexThinkingLevel,
 } from "../lib/models"
 // import type { PlanType } from "@/lib/config/subscription-plans"
@@ -167,7 +171,7 @@ function useAvailableModels() {
 // Agent providers
 const agents = [
   { id: "claude-code", name: "Claude Code", hasModels: true },
-  { id: "cursor", name: "Cursor CLI", disabled: true },
+  { id: "cursor", name: "Cursor CLI", hasModels: true },
   { id: "codex", name: "OpenAI Codex" },
 ]
 
@@ -216,10 +220,21 @@ export function NewChatForm({
 
   // Clear invalid project from storage
   useEffect(() => {
-    if (selectedProject && projectsList && !validatedProject) {
+    if (
+      selectedProject &&
+      projectsList &&
+      !isLoadingProjects &&
+      !validatedProject
+    ) {
       setSelectedProject(null)
     }
-  }, [selectedProject, projectsList, validatedProject, setSelectedProject])
+  }, [
+    selectedProject,
+    projectsList,
+    isLoadingProjects,
+    validatedProject,
+    setSelectedProject,
+  ])
   const [lastSelectedAgentId, setLastSelectedAgentId] = useAtom(
     lastSelectedAgentIdAtom,
   )
@@ -246,6 +261,7 @@ export function NewChatForm({
   const codexOnboardingCompleted = useAtomValue(codexOnboardingCompletedAtom)
   const { data: claudeCodeIntegration } =
     trpc.claudeCode.getIntegration.useQuery()
+  const { data: cursorIntegration } = trpc.cursor.getIntegration.useQuery()
   const isClaudeConnected =
     Boolean(claudeCodeIntegration?.isConnected) ||
     anthropicOnboardingCompleted ||
@@ -327,6 +343,9 @@ export function NewChatForm({
   const [lastSelectedCodexThinking, setLastSelectedCodexThinking] = useAtom(
     lastSelectedCodexThinkingAtom,
   )
+  const [lastSelectedCursorModelId, setLastSelectedCursorModelId] = useAtom(
+    lastSelectedCursorModelIdAtom,
+  )
   const [thinkingEnabled, setThinkingEnabled] = useAtom(
     extendedThinkingEnabledAtom,
   )
@@ -349,8 +368,9 @@ export function NewChatForm({
   const hiddenModels = useAtomValue(hiddenModelsAtom)
   const codexUiModels = useMemo(
     () => {
+      const subscriptionOnly = new Set<string>(CODEX_SUBSCRIPTION_ONLY_MODEL_IDS)
       let models = hasAppCodexApiKey
-        ? CODEX_MODELS.filter((model) => model.id !== "gpt-5.3-codex")
+        ? CODEX_MODELS.filter((model) => !subscriptionOnly.has(model.id))
         : CODEX_MODELS
       return models.filter((model) => !hiddenModels.includes(model.id))
     },
@@ -362,6 +382,17 @@ export function NewChatForm({
       codexUiModels[0] ||
       CODEX_MODELS[0]!,
     [codexUiModels, lastSelectedCodexModelId],
+  )
+  const cursorUiModels = useMemo(
+    () => CURSOR_MODELS.filter((model) => !hiddenModels.includes(model.id)),
+    [hiddenModels],
+  )
+  const selectedCursorModel = useMemo(
+    () =>
+      cursorUiModels.find((model) => model.id === lastSelectedCursorModelId) ||
+      cursorUiModels[0] ||
+      CURSOR_MODELS[0]!,
+    [cursorUiModels, lastSelectedCursorModelId],
   )
 
   const selectedCodexThinking = useMemo<CodexThinkingLevel>(() => {
@@ -401,11 +432,15 @@ export function NewChatForm({
     if (selectedAgent.id === "codex") {
       return `${selectedCodexModel.id}/${selectedCodexThinking}`
     }
+    if (selectedAgent.id === "cursor") {
+      return selectedCursorModel.id
+    }
     return selectedModel?.id ?? "opus"
   }, [
     selectedAgent.id,
     selectedCodexModel.id,
     selectedCodexThinking,
+    selectedCursorModel.id,
     selectedModel?.id,
   ])
 
@@ -416,6 +451,10 @@ export function NewChatForm({
   const selectedModelLabel = useMemo(() => {
     if (selectedAgent.id === "codex") {
       return selectedCodexModel.name
+    }
+
+    if (selectedAgent.id === "cursor") {
+      return selectedCursorModel.name
     }
 
     if (availableModels.isOffline && availableModels.hasOllama) {
@@ -434,6 +473,7 @@ export function NewChatForm({
   }, [
     selectedAgent.id,
     selectedCodexModel.name,
+    selectedCursorModel.name,
     availableModels.isOffline,
     availableModels.hasOllama,
     currentOllamaModel,
@@ -801,6 +841,7 @@ export function NewChatForm({
 
   // Manual refresh branches
   const handleRefreshBranches = useCallback(() => {
+    if (isWebStandalone()) return
     if (validatedProject?.path) {
       fetchRemoteMutation.mutate(
         { worktreePath: validatedProject.path },
@@ -1873,13 +1914,12 @@ export function NewChatForm({
                         <AgentModelSelector
                           open={isModelDropdownOpen}
                           onOpenChange={setIsModelDropdownOpen}
-                          selectedAgentId={selectedAgent.id as "claude-code" | "codex"}
+                          selectedAgentId={selectedAgent.id as AgentProviderId}
                           onSelectedAgentIdChange={(provider) => {
-                            if (provider === "claude-code") {
-                              setSelectedAgent(claudeAgent)
-                            } else {
-                              setSelectedAgent(enabledAgents.find((agent) => agent.id === "codex") || fallbackAgent)
-                            }
+                            const nextAgent =
+                              enabledAgents.find((agent) => agent.id === provider) ||
+                              fallbackAgent
+                            setSelectedAgent(nextAgent)
                             setLastSelectedAgentId(provider)
                           }}
                           selectedModelLabel={selectedModelLabel}
@@ -1928,6 +1968,16 @@ export function NewChatForm({
                             selectedThinking: selectedCodexThinking,
                             onSelectThinking: setLastSelectedCodexThinking,
                             isConnected: codexOnboardingCompleted,
+                          }}
+                          cursor={{
+                            models: cursorUiModels,
+                            selectedModelId: selectedCursorModel.id,
+                            onSelectModel: (modelId) => {
+                              const model = cursorUiModels.find((item) => item.id === modelId)
+                              if (!model) return
+                              setLastSelectedCursorModelId(model.id)
+                            },
+                            isConnected: Boolean(cursorIntegration?.isConnected),
                           }}
                         />
                       </div>

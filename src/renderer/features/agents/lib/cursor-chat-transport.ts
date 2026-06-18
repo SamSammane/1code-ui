@@ -1,34 +1,25 @@
 import type { ChatTransport, UIMessage } from "ai"
 import { toast } from "sonner"
 import { normalizeCodexStreamChunk } from "../../../../shared/codex-tool-normalizer"
-import {
-  codexApiKeyAtom,
-  codexLoginModalOpenAtom,
-  codexOnboardingAuthMethodAtom,
-  codexOnboardingCompletedAtom,
-  normalizeCodexApiKey,
-  sessionInfoAtom,
-} from "../../../lib/atoms"
+import { sessionInfoAtom, cursorLoginModalOpenAtom } from "../../../lib/atoms"
 import { appStore } from "../../../lib/jotai-store"
 import { trpcClient } from "../../../lib/trpc"
 import {
   pendingAuthRetryMessageAtom,
-  subChatCodexModelIdAtomFamily,
-  subChatCodexThinkingAtomFamily,
+  subChatCursorModelIdAtomFamily,
 } from "../atoms"
-import { CODEX_MODELS, type CodexThinkingLevel } from "./models"
+import { CURSOR_MODELS } from "./models"
 import { useAgentSubChatStore } from "../stores/sub-chat-store"
 import type { AgentMessageMetadata } from "../ui/agent-message-usage"
 
 type UIMessageChunk = any
 
-type ACPChatTransportConfig = {
+type CursorChatTransportConfig = {
   chatId: string
   subChatId: string
   cwd: string
   projectPath?: string
   mode: "plan" | "agent"
-  provider: "codex"
 }
 
 type ImageAttachment = {
@@ -37,77 +28,19 @@ type ImageAttachment = {
   filename?: string
 }
 
-// When a sub-chat hits auth-error, force one fresh Codex ACP session on next send.
 const forceFreshSessionSubChats = new Set<string>()
-const DEFAULT_CODEX_MODEL = "gpt-5.5/high"
-function getStoredCodexCredentials(): {
-  hasApiKey: boolean
-  hasSubscription: boolean
-  hasAny: boolean
-} {
-  const hasApiKey = Boolean(normalizeCodexApiKey(appStore.get(codexApiKeyAtom)))
-  const hasSubscription =
-    appStore.get(codexOnboardingCompletedAtom) &&
-    appStore.get(codexOnboardingAuthMethodAtom) === "chatgpt"
+const DEFAULT_CURSOR_MODEL = "composer-2.5"
 
-  return {
-    hasApiKey,
-    hasSubscription,
-    hasAny: hasApiKey || hasSubscription,
-  }
-}
-
-async function resolveCodexCredentialsForAuthError(): Promise<{
-  hasApiKey: boolean
-  hasSubscription: boolean
-  hasAny: boolean
-}> {
-  const snapshot = getStoredCodexCredentials()
-
-  let hasSubscription = false
-  try {
-    const integration = await trpcClient.codex.getIntegration.query()
-    hasSubscription = integration.state === "connected_chatgpt"
-  } catch {
-    hasSubscription = false
-  }
-
-  return {
-    hasApiKey: snapshot.hasApiKey,
-    hasSubscription,
-    hasAny: snapshot.hasApiKey || hasSubscription,
-  }
-}
-
-function getSelectedCodexModel(subChatId: string): string {
-  const selectedModelId = appStore.get(subChatCodexModelIdAtomFamily(subChatId))
-  const selectedThinking = appStore.get(subChatCodexThinkingAtomFamily(subChatId))
+function getSelectedCursorModel(subChatId: string): string {
+  const selectedModelId = appStore.get(subChatCursorModelIdAtomFamily(subChatId))
   const selectedModel =
-    CODEX_MODELS.find((model) => model.id === selectedModelId) ||
-    CODEX_MODELS.find((model) => model.id === "gpt-5.5") ||
-    CODEX_MODELS[0]
+    CURSOR_MODELS.find((model) => model.id === selectedModelId) || CURSOR_MODELS[0]
 
-  if (!selectedModel) {
-    return DEFAULT_CODEX_MODEL
-  }
-
-  const normalizedThinking = selectedModel.thinkings.includes(
-    selectedThinking as CodexThinkingLevel,
-  )
-    ? (selectedThinking as CodexThinkingLevel)
-    : selectedModel.thinkings.includes("high")
-      ? "high"
-      : selectedModel.thinkings[0]
-
-  if (!normalizedThinking) {
-    return DEFAULT_CODEX_MODEL
-  }
-
-  return `${selectedModel.id}/${normalizedThinking}`
+  return selectedModel?.id || DEFAULT_CURSOR_MODEL
 }
 
-export class ACPChatTransport implements ChatTransport<UIMessage> {
-  constructor(private config: ACPChatTransportConfig) {}
+export class CursorChatTransport implements ChatTransport<UIMessage> {
+  constructor(private config: CursorChatTransportConfig) {}
 
   async sendMessages(options: {
     messages: UIMessage[]
@@ -135,8 +68,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
     if (forceNewSession) {
       forceFreshSessionSubChats.delete(this.config.subChatId)
     }
-    const codexApiKey = normalizeCodexApiKey(appStore.get(codexApiKeyAtom))
-    const selectedModel = getSelectedCodexModel(this.config.subChatId)
+    const selectedModel = getSelectedCursorModel(this.config.subChatId)
 
     return new ReadableStream({
       start: (controller) => {
@@ -158,7 +90,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
           sub?.unsubscribe()
         }
 
-        sub = trpcClient.codex.chat.subscribe(
+        sub = trpcClient.cursor.chat.subscribe(
           {
             subChatId: this.config.subChatId,
             chatId: this.config.chatId,
@@ -173,13 +105,6 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
             ...(sessionId ? { sessionId } : {}),
             ...(forceNewSession ? { forceNewSession: true } : {}),
             ...(images.length > 0 ? { images } : {}),
-            ...(codexApiKey
-              ? {
-                  authConfig: {
-                    apiKey: codexApiKey,
-                  },
-                }
-              : {}),
           },
           {
             onData: (chunk: UIMessageChunk) => {
@@ -196,42 +121,45 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
                 forceFreshSessionSubChats.add(this.config.subChatId)
 
                 void (async () => {
-                  const credentials = await resolveCodexCredentialsForAuthError()
-                  const shouldAutoRetryOnce = credentials.hasAny && !forceNewSession
+                  let isConnected = false
+                  try {
+                    const integration =
+                      await trpcClient.cursor.getIntegration.query()
+                    isConnected = Boolean(integration.isConnected)
+                  } catch {
+                    // Open login modal on integration check failure.
+                  }
 
                   appStore.set(pendingAuthRetryMessageAtom, {
                     subChatId: this.config.subChatId,
-                    provider: "codex",
+                    provider: "cursor",
                     prompt,
                     ...(images.length > 0 && { images }),
-                    readyToRetry: shouldAutoRetryOnce,
+                    readyToRetry: false,
                   })
 
-                  if (!credentials.hasAny) {
-                    appStore.set(codexLoginModalOpenAtom, true)
-                  } else if (!shouldAutoRetryOnce) {
-                    toast.error("Codex authentication failed", {
-                      description: credentials.hasApiKey
-                        ? "Saved Codex API key was rejected. Update it in Settings."
-                        : "Saved Codex subscription auth failed. Reconnect subscription in Settings.",
+                  appStore.set(cursorLoginModalOpenAtom, true)
+                  if (isConnected) {
+                    toast.error("Cursor authentication failed", {
+                      description:
+                        "CLI login looks valid, but the agent session was rejected. Sign in again.",
                     })
                   }
                 })()
 
-                void trpcClient.codex.cleanup
+                void trpcClient.cursor.cleanup
                   .mutate({ subChatId: this.config.subChatId })
                   .catch(() => {
                     // No-op
                   })
 
-                // Force stream status reset so retry can start once auth succeeds.
-                controller.error(new Error("Codex authentication required"))
+                controller.error(new Error("Cursor authentication required"))
                 return
               }
 
               if (chunk.type === "error") {
-                toast.error("Codex error", {
-                  description: chunk.errorText || "An unexpected Codex error occurred.",
+                toast.error("Cursor error", {
+                  description: chunk.errorText || "An unexpected Cursor error occurred.",
                 })
               }
 
@@ -251,7 +179,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
               }
             },
             onError: (error: Error) => {
-              toast.error("Codex request failed", {
+              toast.error("Cursor request failed", {
                 description: error.message,
               })
               controller.error(error)
@@ -269,23 +197,18 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
         )
 
         options.abortSignal?.addEventListener("abort", () => {
-          // Start server-side cancellation first so the router still has
-          // active run ownership when processing cancel(runId).
-          const cancelPromise = trpcClient.codex.cancel
+          const cancelPromise = trpcClient.cursor.cancel
             .mutate({ subChatId: this.config.subChatId, runId })
             .catch(() => {
               // No-op
             })
 
-          // Keep stop UX immediate in the client.
           try {
             controller.close()
           } catch {
             // Stream already closed
           }
 
-          // Keep subscription alive briefly so server-side onFinish can persist
-          // interrupted response state before cleanup unsubscribe runs.
           void (async () => {
             try {
               await cancelPromise
@@ -306,7 +229,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
   }
 
   cleanup(): void {
-    void trpcClient.codex.cleanup
+    void trpcClient.cursor.cleanup
       .mutate({ subChatId: this.config.subChatId })
       .catch(() => {
         // No-op
@@ -314,9 +237,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
   }
 
   private extractText(message: UIMessage | undefined): string {
-    if (!message) return ""
-
-    if (!message.parts) return ""
+    if (!message?.parts) return ""
 
     const textParts: string[] = []
     const fileContents: string[] = []

@@ -11,7 +11,10 @@
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
+    "dev:web": "vite --config vite.web.config.ts",
+    "setup": "bun run claude:download && bun run codex:download",
     "build": "electron-vite build",
+    "build:web": "vite build --config vite.web.config.ts",
     "preview": "electron-vite preview",
     "package": "electron-builder --dir",
     "package:mac": "electron-builder --mac",

@@ -15,9 +15,11 @@ import { readFileSync, existsSync, writeFileSync, mkdirSync } from "fs"
 import { createIPCHandler } from "trpc-electron/main"
 import { createAppRouter } from "../lib/trpc/routers"
 import { getAuthManager, handleAuthCode, getBaseUrl } from "../index"
+import { canAccessApp, isVendorAuthEnabled } from "../lib/config"
 import { registerGitWatcherIPC } from "../lib/git/watcher"
 import { hasActiveClaudeSessions, abortAllClaudeSessions } from "../lib/trpc/routers/claude"
 import { hasActiveCodexStreams, abortAllCodexStreams } from "../lib/trpc/routers/codex"
+import { hasActiveCursorStreams, abortAllCursorStreams } from "../lib/trpc/routers/cursor"
 import { registerThemeScannerIPC } from "../lib/vscode-theme-scanner"
 import { windowManager } from "./window-manager"
 
@@ -148,6 +150,8 @@ function registerIpcHandlers(): void {
 
   // API base URL for fetch requests
   ipcMain.handle("app:get-api-base-url", () => getBaseUrl())
+
+  ipcMain.handle("app:is-vendor-auth-enabled", () => isVendorAuthEnabled())
 
   // Window controls - use event.sender to identify window
   ipcMain.handle("window:minimize", (event) => {
@@ -367,9 +371,17 @@ function registerIpcHandlers(): void {
     } catch (err) {
       console.error("[Auth] Failed to clear cookie:", err)
     }
-    // Show login page in all windows
-    for (const win of windowManager.getAll()) {
-      showLoginPageInWindow(win)
+    // Show login page in all windows (vendor auth builds only)
+    if (isVendorAuthEnabled()) {
+      for (const win of windowManager.getAll()) {
+        showLoginPageInWindow(win)
+      }
+    } else {
+      for (const win of windowManager.getAll()) {
+        if (!win.isDestroyed()) {
+          loadAppInWindow(win)
+        }
+      }
     }
   })
 
@@ -542,6 +554,38 @@ function registerIpcHandlers(): void {
 }
 
 /**
+ * Load the main app UI in a window
+ */
+function loadAppInWindow(
+  window: BrowserWindow,
+  options?: { chatId?: string; subChatId?: string },
+): void {
+  const devServerUrl = process.env.ELECTRON_RENDERER_URL
+  const windowId = windowManager.getStableId(window)
+
+  const buildParams = (params: URLSearchParams) => {
+    params.set("windowId", windowId)
+    if (options?.chatId) params.set("chatId", options.chatId)
+    if (options?.subChatId) params.set("subChatId", options.subChatId)
+  }
+
+  if (devServerUrl) {
+    const url = new URL(devServerUrl)
+    buildParams(url.searchParams)
+    window.loadURL(url.toString())
+    if (!app.isPackaged && windowId === "main") {
+      window.webContents.openDevTools()
+    }
+  } else {
+    const hashParams = new URLSearchParams()
+    buildParams(hashParams)
+    window.loadFile(join(__dirname, "../renderer/index.html"), {
+      hash: hashParams.toString(),
+    })
+  }
+}
+
+/**
  * Show login page in a specific window
  */
 function showLoginPageInWindow(window: BrowserWindow): void {
@@ -710,7 +754,7 @@ export function createWindow(options?: { chatId?: string; subChatId?: string }):
       if (!input.shift) {
         // Block Cmd+R entirely
         event.preventDefault()
-      } else if (hasActiveClaudeSessions() || hasActiveCodexStreams()) {
+      } else if (hasActiveClaudeSessions() || hasActiveCodexStreams() || hasActiveCursorStreams()) {
         // Cmd+Shift+R with active streams — intercept and confirm
         event.preventDefault()
         dialog
@@ -728,6 +772,7 @@ export function createWindow(options?: { chatId?: string; subChatId?: string }):
             if (response === 1) {
               abortAllClaudeSessions()
               abortAllCodexStreams()
+              abortAllCursorStreams()
               window.webContents.reloadIgnoringCache()
             }
           })
@@ -748,10 +793,11 @@ export function createWindow(options?: { chatId?: string; subChatId?: string }):
       // Still abort sessions gracefully so partial state is saved
       abortAllClaudeSessions()
       abortAllCodexStreams()
+      abortAllCursorStreams()
       return
     }
 
-    if (hasActiveClaudeSessions() || hasActiveCodexStreams()) {
+    if (hasActiveClaudeSessions() || hasActiveCodexStreams() || hasActiveCursorStreams()) {
       event.preventDefault()
       dialog
         .showMessageBox(window, {
@@ -768,6 +814,7 @@ export function createWindow(options?: { chatId?: string; subChatId?: string }):
           if (response === 1) {
             abortAllClaudeSessions()
             abortAllCodexStreams()
+            abortAllCursorStreams()
             window.destroy()
           }
         })
@@ -781,7 +828,6 @@ export function createWindow(options?: { chatId?: string; subChatId?: string }):
   })
 
   // Load the renderer - check auth first
-  const devServerUrl = process.env.ELECTRON_RENDERER_URL
   const authManager = getAuthManager()
 
   console.log("[Main] ========== AUTH CHECK ==========")
@@ -790,47 +836,15 @@ export function createWindow(options?: { chatId?: string; subChatId?: string }):
   console.log("[Main] isAuthenticated():", isAuth)
   const user = authManager.getUser()
   console.log("[Main] getUser():", user ? user.email : "null")
+  console.log("[Main] vendorAuthEnabled:", isVendorAuthEnabled())
   console.log("[Main] ================================")
 
-  if (isAuth) {
-    console.log("[Main] ✓ User authenticated, loading app")
-    // Get stable window ID from manager (assigned during register)
-    // "main" for first window, "window-2", "window-3", etc. for additional windows
-    const windowId = windowManager.getStableId(window)
-
-    // Build URL params including optional chatId/subChatId
-    const buildParams = (params: URLSearchParams) => {
-      params.set("windowId", windowId)
-      if (options?.chatId) params.set("chatId", options.chatId)
-      if (options?.subChatId) params.set("subChatId", options.subChatId)
-    }
-
-    if (devServerUrl) {
-      // Pass params via query for dev mode
-      const url = new URL(devServerUrl)
-      buildParams(url.searchParams)
-      window.loadURL(url.toString())
-      // Only open devtools for first window in development
-      if (!app.isPackaged && windowId === "main") {
-        window.webContents.openDevTools()
-      }
-    } else {
-      // Pass params via hash for production (file:// URLs)
-      const hashParams = new URLSearchParams()
-      buildParams(hashParams)
-      window.loadFile(join(__dirname, "../renderer/index.html"), {
-        hash: hashParams.toString(),
-      })
-    }
+  if (canAccessApp(isAuth)) {
+    console.log("[Main] ✓ Loading app")
+    loadAppInWindow(window, options)
   } else {
     console.log("[Main] ✗ Not authenticated, showing login page")
-    // In dev mode, login.html is in src/renderer
-    if (devServerUrl) {
-      const loginPath = join(app.getAppPath(), "src/renderer/login.html")
-      window.loadFile(loginPath)
-    } else {
-      window.loadFile(join(__dirname, "../renderer/login.html"))
-    }
+    showLoginPageInWindow(window)
   }
 
   // Log page load - traffic light visibility is managed by the renderer

@@ -1,14 +1,7 @@
 import { AuthStore, AuthData, AuthUser } from "./auth-store"
 import { app, BrowserWindow } from "electron"
 import { AUTH_SERVER_PORT } from "./constants"
-
-// Get API URL - in packaged app always use production, in dev allow override
-function getApiBaseUrl(): string {
-  if (app.isPackaged) {
-    return "https://21st.dev"
-  }
-  return import.meta.env.MAIN_VITE_API_URL || "https://21st.dev"
-}
+import { getApiUrl } from "./lib/config"
 
 export class AuthManager {
   private store: AuthStore
@@ -35,7 +28,7 @@ export class AuthManager {
   }
 
   private getApiUrl(): string {
-    return getApiBaseUrl()
+    return getApiUrl()
   }
 
   /**
@@ -208,8 +201,13 @@ export class AuthManager {
    */
   startAuthFlow(mainWindow: BrowserWindow | null): void {
     const { shell } = require("electron")
+    const apiUrl = this.getApiUrl()
+    if (!apiUrl) {
+      console.warn("[Auth] Cannot start auth flow: no API URL configured")
+      return
+    }
 
-    let authUrl = `${this.getApiUrl()}/auth/desktop?auto=true`
+    let authUrl = `${apiUrl}/auth/desktop?auto=true`
 
     // In dev mode, use localhost callback (we run HTTP server on AUTH_SERVER_PORT)
     // Also pass the protocol so web knows which deep link to use as fallback

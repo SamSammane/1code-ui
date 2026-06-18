@@ -57,9 +57,11 @@ import { cn } from "../../../lib/utils"
 import {
   lastSelectedCodexModelIdAtom,
   lastSelectedCodexThinkingAtom,
+  lastSelectedCursorModelIdAtom,
   lastSelectedModelIdAtom,
   subChatCodexModelIdAtomFamily,
   subChatCodexThinkingAtomFamily,
+  subChatCursorModelIdAtomFamily,
   subChatModelIdAtomFamily,
   subChatModeAtomFamily,
   getNextMode,
@@ -68,7 +70,7 @@ import {
 } from "../atoms"
 import { useAgentSubChatStore } from "../stores/sub-chat-store"
 import { AgentsSlashCommand, type SlashCommandOption } from "../commands"
-import { AgentModelSelector } from "../components/agent-model-selector"
+import { AgentModelSelector, type AgentProviderId } from "../components/agent-model-selector"
 import { AgentSendButton } from "../components/agent-send-button"
 import type { UploadedFile, UploadedImage } from "../hooks/use-agents-file-upload"
 import {
@@ -78,6 +80,8 @@ import {
 import {
   CLAUDE_MODELS,
   CODEX_MODELS,
+  CODEX_SUBSCRIPTION_ONLY_MODEL_IDS,
+  CURSOR_MODELS,
   type CodexThinkingLevel,
 } from "../lib/models"
 import type { DiffTextContext, SelectedTextContext } from "../lib/queue-utils"
@@ -183,7 +187,7 @@ export interface ChatInputAreaProps {
   // Context
   subChatId: string
   parentChatId: string
-  provider?: "claude-code" | "codex"
+  provider?: AgentProviderId
   teamId?: string
   repository?: string
   sandboxId?: string
@@ -200,9 +204,9 @@ export interface ChatInputAreaProps {
   // Callback to send message with question answer (Enter sends immediately, not to queue)
   onSubmitWithQuestionAnswer?: () => void
   // Callback to switch provider for brand new (empty) sub-chats
-  onProviderChange?: (provider: "claude-code" | "codex") => void
+  onProviderChange?: (provider: AgentProviderId) => void
   // Callback to continue chat with a different provider (creates new sub-chat with history)
-  onContinueWithProvider?: (provider: "claude-code" | "codex") => void
+  onContinueWithProvider?: (provider: AgentProviderId) => void
   // Whether this sub-chat tab is the active/visible one (prevents window-level hotkeys in background tabs)
   isActive?: boolean
 }
@@ -472,9 +476,17 @@ export const ChatInputArea = memo(function ChatInputArea({
   const [selectedSubChatCodexThinking, setSelectedSubChatCodexThinking] = useAtom(
     subChatCodexThinkingAtom,
   )
+  const subChatCursorModelIdAtom = useMemo(
+    () => subChatCursorModelIdAtomFamily(subChatId),
+    [subChatId],
+  )
+  const [selectedSubChatCursorModelId, setSelectedSubChatCursorModelId] = useAtom(
+    subChatCursorModelIdAtom,
+  )
   const setLastSelectedModelId = useSetAtom(lastSelectedModelIdAtom)
   const setLastSelectedCodexModelId = useSetAtom(lastSelectedCodexModelIdAtom)
   const setLastSelectedCodexThinking = useSetAtom(lastSelectedCodexThinkingAtom)
+  const setLastSelectedCursorModelId = useSetAtom(lastSelectedCursorModelIdAtom)
   const [selectedOllamaModel, setSelectedOllamaModel] = useAtom(selectedOllamaModelAtom)
   const availableModels = useAvailableModels()
   const [selectedModel, setSelectedModel] = useState(
@@ -509,10 +521,12 @@ export const ChatInputArea = memo(function ChatInputArea({
   const codexOnboardingCompleted = useAtomValue(codexOnboardingCompletedAtom)
   const { data: claudeCodeIntegration } =
     trpc.claudeCode.getIntegration.useQuery()
+  const { data: cursorIntegration } = trpc.cursor.getIntegration.useQuery()
   const codexUiModels = useMemo(
     () => {
+      const subscriptionOnly = new Set<string>(CODEX_SUBSCRIPTION_ONLY_MODEL_IDS)
       let models = hasAppCodexApiKey
-        ? CODEX_MODELS.filter((model) => model.id !== "gpt-5.3-codex")
+        ? CODEX_MODELS.filter((model) => !subscriptionOnly.has(model.id))
         : CODEX_MODELS
       return models.filter((model) => !hiddenModels.includes(model.id))
     },
@@ -524,6 +538,17 @@ export const ChatInputArea = memo(function ChatInputArea({
       codexUiModels[0] ||
       CODEX_MODELS[0]!,
     [codexUiModels, selectedSubChatCodexModelId],
+  )
+  const cursorUiModels = useMemo(
+    () => CURSOR_MODELS.filter((model) => !hiddenModels.includes(model.id)),
+    [hiddenModels],
+  )
+  const selectedCursorModel = useMemo(
+    () =>
+      cursorUiModels.find((model) => model.id === selectedSubChatCursorModelId) ||
+      cursorUiModels[0] ||
+      CURSOR_MODELS[0]!,
+    [cursorUiModels, selectedSubChatCursorModelId],
   )
 
   const selectedCodexThinking = useMemo<CodexThinkingLevel>(() => {
@@ -575,6 +600,16 @@ export const ChatInputArea = memo(function ChatInputArea({
     setSelectedSubChatCodexThinking,
   ])
 
+  useEffect(() => {
+    if (provider !== "cursor") return
+    if (!selectedCursorModel?.id) return
+    setSelectedSubChatCursorModelId(selectedCursorModel.id)
+  }, [
+    provider,
+    selectedCursorModel?.id,
+    setSelectedSubChatCursorModelId,
+  ])
+
   const customClaudeConfig = useAtomValue(customClaudeConfigAtom)
   const normalizedCustomClaudeConfig =
     normalizeCustomClaudeConfig(customClaudeConfig)
@@ -584,6 +619,7 @@ export const ChatInputArea = memo(function ChatInputArea({
     anthropicOnboardingCompleted ||
     apiKeyOnboardingCompleted ||
     hasCustomClaudeConfig
+  const isCursorConnected = Boolean(cursorIntegration?.isConnected)
 
   // Determine current Ollama model (selected or recommended)
   const currentOllamaModel = selectedOllamaModel || availableModels.recommendedModel || availableModels.ollamaModels[0]
@@ -603,6 +639,10 @@ export const ChatInputArea = memo(function ChatInputArea({
       return selectedCodexModel.name
     }
 
+    if (provider === "cursor") {
+      return selectedCursorModel.name
+    }
+
     if (availableModels.isOffline && availableModels.hasOllama) {
       return currentOllamaModel || "Ollama"
     }
@@ -619,6 +659,7 @@ export const ChatInputArea = memo(function ChatInputArea({
   }, [
     provider,
     selectedCodexModel.name,
+    selectedCursorModel.name,
     availableModels.isOffline,
     availableModels.hasOllama,
     currentOllamaModel,
@@ -633,12 +674,52 @@ export const ChatInputArea = memo(function ChatInputArea({
   const setSettingsTab = useSetAtom(agentsSettingsDialogActiveTabAtom)
 
   const {
-    data: allMcpConfig,
-    isLoading: isMcpLoading,
-    refetch: refetchMcp,
+    data: claudeMcpConfig,
+    isLoading: isClaudeMcpLoading,
+    refetch: refetchClaudeMcp,
   } = trpc.claude.getAllMcpConfig.useQuery(undefined, {
+    enabled: provider === "claude-code",
     staleTime: 5 * 60 * 1000,
   })
+
+  const {
+    data: codexMcpConfig,
+    isLoading: isCodexMcpLoading,
+    refetch: refetchCodexMcp,
+  } = trpc.codex.getAllMcpConfig.useQuery(undefined, {
+    enabled: provider === "codex",
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const {
+    data: cursorMcpConfig,
+    isLoading: isCursorMcpLoading,
+    refetch: refetchCursorMcp,
+  } = trpc.cursor.getAllMcpConfig.useQuery(undefined, {
+    enabled: provider === "cursor",
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const allMcpConfig =
+    provider === "codex"
+      ? codexMcpConfig
+      : provider === "cursor"
+        ? cursorMcpConfig
+        : claudeMcpConfig
+
+  const isMcpLoading =
+    provider === "codex"
+      ? isCodexMcpLoading
+      : provider === "cursor"
+        ? isCursorMcpLoading
+        : isClaudeMcpLoading
+
+  const refetchMcp =
+    provider === "codex"
+      ? refetchCodexMcp
+      : provider === "cursor"
+        ? refetchCursorMcp
+        : refetchClaudeMcp
 
   const [isMcpRefreshing, setIsMcpRefreshing] = useState(false)
   const isMcpBusy = isMcpLoading || isMcpRefreshing
@@ -656,6 +737,16 @@ export const ChatInputArea = memo(function ChatInputArea({
   const mcpGroups = useMemo(() => {
     if (!allMcpConfig?.groups) return { global: [], local: [] }
 
+    if (provider === "cursor") {
+      const localGroup = allMcpConfig.groups.find(
+        (g) => g.projectPath && projectPath && g.projectPath === projectPath,
+      )
+      return {
+        global: [],
+        local: localGroup?.mcpServers || [],
+      }
+    }
+
     const globalGroup = allMcpConfig.groups.find((g) => g.groupName === "Global")
     const localGroup = allMcpConfig.groups.find(
       (g) => g.projectPath && projectPath && g.projectPath === projectPath,
@@ -665,7 +756,7 @@ export const ChatInputArea = memo(function ChatInputArea({
       global: globalGroup?.mcpServers || [],
       local: localGroup?.mcpServers || [],
     }
-  }, [allMcpConfig?.groups, projectPath])
+  }, [allMcpConfig?.groups, projectPath, provider])
 
   const totalMcps = mcpGroups.global.length + mcpGroups.local.length
   const connectedMcps =
@@ -1607,6 +1698,17 @@ export const ChatInputArea = memo(function ChatInputArea({
                           setLastSelectedCodexThinking(thinking)
                         },
                         isConnected: codexOnboardingCompleted,
+                      }}
+                      cursor={{
+                        models: cursorUiModels,
+                        selectedModelId: selectedCursorModel.id,
+                        onSelectModel: (modelId) => {
+                          const model = cursorUiModels.find((item) => item.id === modelId)
+                          if (!model) return
+                          setSelectedSubChatCursorModelId(model.id)
+                          setLastSelectedCursorModelId(model.id)
+                        },
+                        isConnected: isCursorConnected,
                       }}
                     />
                   </div>

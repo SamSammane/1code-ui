@@ -79,7 +79,7 @@ import { appStore } from "../../../lib/jotai-store"
 import { api } from "../../../lib/mock-api"
 import { trpc, trpcClient } from "../../../lib/trpc"
 import { cn } from "../../../lib/utils"
-import { isDesktopApp } from "../../../lib/utils/platform"
+import { isDesktopApp, isWebStubMode } from "../../../lib/utils/platform"
 import { ChangesPanel } from "../../changes"
 import { useCommitActions } from "../../changes/components/commit-input"
 import { DiffCenterPeekDialog } from "../../changes/components/diff-center-peek-dialog"
@@ -383,7 +383,7 @@ const claudeModels = [
 const agents = [
   { id: "claude-code", name: "Claude Code", hasModels: true },
   { id: "cursor", name: "Cursor CLI", hasModels: true },
-  { id: "codex", name: "OpenAI Codex", disabled: true },
+  { id: "codex", name: "OpenAI Codex", hasModels: true },
 ]
 
 // Helper function to get agent icon
@@ -6559,6 +6559,14 @@ Make sure to preserve all functionality from both branches when resolving confli
 
         return found ? { ...old, subChats } : old
       })
+
+      if (isWebStubMode()) {
+        void trpcClient.chats.updateSubChatMessages
+          .mutate({ id: subChatId, messages: latestMessagesJson })
+          .catch(() => {
+            // Best-effort persistence for browser preview
+          })
+      }
     },
     [chatId, utils],
   )

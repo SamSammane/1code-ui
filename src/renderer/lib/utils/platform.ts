@@ -5,11 +5,16 @@
  * and provides platform-specific shortcuts
  */
 
+import { isWebApiBackendEnabled, isWebStubMode } from "../web/web-api-config"
+import { isAgentsWebStandalone } from "../web/web-runtime"
+
+export { isWebStubMode }
+
 /**
  * Browser build via `bun run dev:web` (no Electron main/preload).
  */
 export function isWebStandalone(): boolean {
-  return import.meta.env.VITE_WEB_STANDALONE === "true"
+  return isAgentsWebStandalone()
 }
 
 /**
@@ -23,6 +28,14 @@ export function isDesktopApp(): boolean {
   if (!api) return false
   if (api.isElectron === false) return false
   return api.isElectron === true || !isWebStandalone()
+}
+
+/**
+ * True when local agents, git, and filesystem are available:
+ * Electron desktop, or web UI connected to the local API server (`bun run dev:web`).
+ */
+export function hasLocalCodingBackend(): boolean {
+  return isDesktopApp() || isWebApiBackendEnabled()
 }
 
 /**

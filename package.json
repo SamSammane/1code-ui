@@ -11,7 +11,9 @@
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
-    "dev:web": "vite --config vite.web.config.ts",
+    "dev:web": "bun run src/web-server/dev.ts",
+    "dev:web:stub": "vite --config vite.web.config.ts --mode stub",
+    "web-server": "node scripts/run-web-server.mjs",
     "setup": "bun run claude:download && bun run codex:download",
     "build": "electron-vite build",
     "build:web": "vite build --config vite.web.config.ts",
@@ -139,6 +141,7 @@
     "electron-vite": "^3.0.0",
     "postcss": "^8.5.1",
     "tailwindcss": "^3.4.17",
+    "tsx": "^4.19.4",
     "typescript": "^5.4.5",
     "vite": "^6.3.4"
   },

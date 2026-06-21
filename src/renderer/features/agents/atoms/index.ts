@@ -236,7 +236,7 @@ export const lastSelectedCodexThinkingAtom = atomWithStorage<CodexThinkingPrefer
 
 export const lastSelectedCursorModelIdAtom = atomWithStorage<string>(
   "agents:lastSelectedCursorModelId",
-  "composer-2.5",
+  "composer-2.5-fast",
   undefined,
   { getOnInit: true },
 )

@@ -4,16 +4,23 @@ import { migrate } from "drizzle-orm/better-sqlite3/migrator"
 import { app } from "electron"
 import { join } from "path"
 import { existsSync, mkdirSync } from "fs"
+import { homedir } from "os"
 import * as schema from "./schema"
 
 let db: ReturnType<typeof drizzle<typeof schema>> | null = null
 let sqlite: Database.Database | null = null
 
+function isWebStandaloneServer(): boolean {
+  return process.env.WEB_STANDALONE_SERVER === "1"
+}
+
 /**
  * Get the database path in the app's user data directory
  */
 function getDatabasePath(): string {
-  const userDataPath = app.getPath("userData")
+  const userDataPath = isWebStandaloneServer()
+    ? join(homedir(), ".1code-web")
+    : app.getPath("userData")
   const dataDir = join(userDataPath, "data")
 
   // Ensure data directory exists
@@ -29,6 +36,9 @@ function getDatabasePath(): string {
  * Handles both development and production (packaged) environments
  */
 function getMigrationsPath(): string {
+  if (isWebStandaloneServer()) {
+    return join(process.cwd(), "drizzle")
+  }
   if (app.isPackaged) {
     // Production: migrations bundled in resources
     return join(process.resourcesPath, "migrations")

@@ -20,6 +20,7 @@ export function installWebRuntime(): void {
 
   if (existing?.isElectron === true) return
 
+  window.__AGENTS_WEB_STANDALONE__ = true
   window.desktopApi = createDesktopApiStub()
 
   if (!window.webUtils) {

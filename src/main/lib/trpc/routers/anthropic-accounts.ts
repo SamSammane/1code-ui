@@ -1,7 +1,7 @@
 import { eq, sql } from "drizzle-orm"
 import { safeStorage } from "electron"
 import { z } from "zod"
-import { getAuthManager } from "../../../index"
+import { getAuthManager } from "../../../auth-manager"
 import { anthropicAccounts, anthropicSettings, claudeCodeCredentials, getDatabase } from "../../db"
 import { createId } from "../../db/utils"
 import { publicProcedure, router } from "../index"

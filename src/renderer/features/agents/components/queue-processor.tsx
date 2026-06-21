@@ -8,7 +8,7 @@ import { useAgentSubChatStore } from "../stores/sub-chat-store"
 import { agentChatStore } from "../stores/agent-chat-store"
 import { trackMessageSent } from "../../../lib/analytics"
 import { appStore } from "../../../lib/jotai-store"
-import { isDesktopApp } from "../../../lib/utils/platform"
+import { hasLocalCodingBackend } from "../../../lib/utils/platform"
 import { loadingSubChatsAtom, setLoading, clearLoading } from "../atoms"
 import { MENTION_PREFIXES } from "../mentions/agents-mentions-editor"
 import { utf8ToBase64 } from "../utils/base64"
@@ -34,7 +34,7 @@ export function QueueProcessor() {
   const timersRef = useRef<Map<string, NodeJS.Timeout>>(new Map())
 
   useEffect(() => {
-    if (!isDesktopApp()) return
+    if (!hasLocalCodingBackend()) return
 
     const processQueue = async (subChatId: string) => {
       // Check if already processing this sub-chat

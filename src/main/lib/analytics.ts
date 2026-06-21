@@ -7,11 +7,15 @@ import { PostHog } from "posthog-node"
 import { app } from "electron"
 import * as fs from "fs"
 import * as path from "path"
+import { getMainViteEnvString } from "./vite-main-env"
 
 // PostHog configuration - hardcoded key for opensource users, env var override for internal builds
 // This enables analytics for all users including those building from source
-const POSTHOG_DESKTOP_KEY = import.meta.env.MAIN_VITE_POSTHOG_KEY || "phc_wM7gbrJhOLTvynyhnhPkrVGDc5mKRSXsLGQHqM3T3vq"
-const POSTHOG_HOST = import.meta.env.MAIN_VITE_POSTHOG_HOST || "https://us.i.posthog.com"
+const POSTHOG_DESKTOP_KEY =
+  getMainViteEnvString("MAIN_VITE_POSTHOG_KEY") ||
+  "phc_wM7gbrJhOLTvynyhnhPkrVGDc5mKRSXsLGQHqM3T3vq"
+const POSTHOG_HOST =
+  getMainViteEnvString("MAIN_VITE_POSTHOG_HOST") || "https://us.i.posthog.com"
 
 let posthog: PostHog | null = null
 let currentUserId: string | null = null

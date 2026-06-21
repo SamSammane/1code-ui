@@ -1,7 +1,7 @@
 import { router, publicProcedure } from "../index"
 import { getDatabase, projects, chats, subChats } from "../../db"
 import { app, shell } from "electron"
-import { getAuthManager } from "../../../index"
+import { getAuthManager } from "../../../auth-manager"
 import { isVendorAuthEnabled } from "../../config"
 import { z } from "zod"
 import { clearNetworkCache } from "../../ollama/network-detector"

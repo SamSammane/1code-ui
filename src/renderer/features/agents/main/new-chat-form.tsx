@@ -27,7 +27,7 @@ import {
   PopoverTrigger,
 } from "../../../components/ui/popover"
 import { cn } from "../../../lib/utils"
-import { isWebStandalone } from "../../../lib/utils/platform"
+import { isWebStubMode } from "../../../lib/utils/platform"
 import {
   agentsDebugModeAtom,
   justCreatedIdsAtom,
@@ -841,7 +841,7 @@ export function NewChatForm({
 
   // Manual refresh branches
   const handleRefreshBranches = useCallback(() => {
-    if (isWebStandalone()) return
+    if (isWebStubMode()) return
     if (validatedProject?.path) {
       fetchRemoteMutation.mutate(
         { worktreePath: validatedProject.path },

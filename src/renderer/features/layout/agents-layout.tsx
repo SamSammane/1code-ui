@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, useMemo, useRef } from "react"
 import { useAtom, useAtomValue, useSetAtom } from "jotai"
 import { toast } from "sonner"
 import { isDesktopApp } from "../../lib/utils/platform"
+import { isWebApiBackendEnabled } from "../../lib/trpc-links"
 import { useIsMobile } from "../../lib/hooks/use-mobile"
 
 import {
@@ -20,7 +21,7 @@ import {
   betaKanbanEnabledAtom,
 } from "../../lib/atoms"
 import { selectedAgentChatIdAtom, selectedProjectAtom, selectedDraftIdAtom, showNewChatFormAtom, desktopViewAtom, fileSearchDialogOpenAtom } from "../agents/atoms"
-import { trpc } from "../../lib/trpc"
+import { trpc, trpcClient } from "../../lib/trpc"
 import { useAgentsHotkeys } from "../agents/lib/agents-hotkeys-manager"
 import { toggleSearchAtom } from "../agents/search"
 import { ClaudeLoginModal } from "../../components/dialogs/claude-login-modal"
@@ -208,8 +209,9 @@ export function AgentsLayout() {
     }
   }, [validatedProject, projects, setSidebarOpen])
 
-  // Worktree setup failures from main process
+  // Worktree setup failures from main process (desktop)
   useEffect(() => {
+    if (!isDesktopApp()) return
     if (typeof window === "undefined") return
     const desktopApi = window.desktopApi as any
     if (!desktopApi?.onWorktreeSetupFailed) return
@@ -239,6 +241,57 @@ export function AgentsLayout() {
     })
 
     return unsubscribe
+  }, [projects, setSelectedProject, setSettingsActiveTab, setSettingsDialogOpen])
+
+  // Worktree setup failures via HTTP poll (web + local API server)
+  useEffect(() => {
+    if (!isWebApiBackendEnabled() || isDesktopApp()) return
+
+    const showFailure = (payload: {
+      kind: "create-failed" | "setup-failed"
+      message: string
+      projectId: string
+    }) => {
+      const errorMessage = payload.message.replace(/\s+/g, " ").trim()
+      const title =
+        payload.kind === "create-failed"
+          ? "Worktree creation failed"
+          : "Worktree setup failed"
+
+      toast.error(title, {
+        description: errorMessage || undefined,
+        duration: 10000,
+        action: {
+          label: "Open settings",
+          onClick: () => {
+            const projectMatch = projects?.find(
+              (project) => project.id === payload.projectId,
+            )
+            if (projectMatch) {
+              setSelectedProject(projectMatch as any)
+            }
+            setSettingsActiveTab("projects")
+            setSettingsDialogOpen(true)
+          },
+        },
+      })
+    }
+
+    const poll = async () => {
+      try {
+        const failures =
+          await trpcClient.chats.pollWorktreeSetupFailures.query()
+        for (const payload of failures) {
+          showFailure(payload)
+        }
+      } catch {
+        // API server may be starting
+      }
+    }
+
+    void poll()
+    const interval = setInterval(poll, 2000)
+    return () => clearInterval(interval)
   }, [projects, setSelectedProject, setSettingsActiveTab, setSettingsDialogOpen])
 
   // Handle sign out

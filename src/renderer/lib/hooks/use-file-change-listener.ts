@@ -1,5 +1,23 @@
 import { useEffect, useRef } from "react"
 import { useQueryClient } from "@tanstack/react-query"
+import { hasLocalCodingBackend, isDesktopApp } from "../utils/platform"
+
+function invalidateGitQueries(
+  queryClient: ReturnType<typeof useQueryClient>,
+): void {
+  queryClient.invalidateQueries({
+    queryKey: [["changes", "getStatus"]],
+  })
+  queryClient.invalidateQueries({
+    queryKey: [["changes", "getParsedDiff"]],
+  })
+  queryClient.invalidateQueries({
+    queryKey: [["chats", "getParsedDiff"]],
+  })
+}
+
+/** Poll git status when web UI uses the local API (no Electron IPC watchers). */
+const WEB_API_POLL_MS = 3000
 
 /**
  * Hook that listens for file changes from Claude Write/Edit tools
@@ -21,20 +39,16 @@ export function useFileChangeListener(
   useEffect(() => {
     if (!worktreePath) return
 
+    if (hasLocalCodingBackend() && !isDesktopApp()) {
+      const interval = setInterval(() => {
+        invalidateGitQueries(queryClient)
+      }, WEB_API_POLL_MS)
+      return () => clearInterval(interval)
+    }
+
     const cleanup = window.desktopApi?.onFileChanged((data) => {
-      // Check if the changed file is within our worktree
       if (data.filePath.startsWith(worktreePath)) {
-        // Invalidate git status queries to trigger refetch
-        queryClient.invalidateQueries({
-          queryKey: [["changes", "getStatus"]],
-        })
-        // Invalidate parsed diff caches for both changes + chats routes
-        queryClient.invalidateQueries({
-          queryKey: [["changes", "getParsedDiff"]],
-        })
-        queryClient.invalidateQueries({
-          queryKey: [["chats", "getParsedDiff"]],
-        })
+        invalidateGitQueries(queryClient)
         onChangeRef.current?.(data)
       }
     })
@@ -74,6 +88,13 @@ export function useGitWatcher(
 
   useEffect(() => {
     if (!worktreePath) return
+
+    if (hasLocalCodingBackend() && !isDesktopApp()) {
+      const interval = setInterval(() => {
+        invalidateGitQueries(queryClient)
+      }, WEB_API_POLL_MS)
+      return () => clearInterval(interval)
+    }
 
     // Subscribe to git watcher on main process
     const subscribe = async () => {

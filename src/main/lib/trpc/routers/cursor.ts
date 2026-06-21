@@ -9,6 +9,11 @@ import {
   normalizeCodexAssistantMessage,
   normalizeCodexStreamChunk,
 } from "../../../../shared/codex-tool-normalizer"
+import {
+  DEFAULT_CURSOR_UI_MODEL,
+  pickCursorModelForSession,
+  resolveCursorAcpModelId,
+} from "../../../../shared/cursor-model-id"
 import { getClaudeShellEnvironment } from "../../claude/env"
 import {
   clearCursorMcpCache,
@@ -79,8 +84,6 @@ const AUTH_HINTS = [
   "401",
   "403",
 ]
-
-const DEFAULT_CURSOR_MODEL = "composer-2.5"
 
 export function hasActiveCursorStreams(): boolean {
   return activeStreams.size > 0
@@ -643,8 +646,8 @@ export const cursorRouter = router({
             }
 
             const existingMessages = parseStoredMessages(existingSubChat.messages)
-            const selectedModelId = input.model?.trim() || DEFAULT_CURSOR_MODEL
-            const metadataModel = selectedModelId
+            const uiModelId = input.model?.trim() || DEFAULT_CURSOR_UI_MODEL
+            const metadataModel = uiModelId
 
             const lastMessage = existingMessages[existingMessages.length - 1]
             const isDuplicatePrompt =
@@ -726,6 +729,39 @@ export const cursorRouter = router({
               authConfig: input.authConfig,
             })
 
+            let acpModelId = resolveCursorAcpModelId(uiModelId)
+            try {
+              const sessionInfo = await provider.initSession()
+              const available =
+                sessionInfo?.models?.availableModels?.map((m) => m.modelId) ?? []
+              acpModelId = pickCursorModelForSession(uiModelId, sessionInfo?.models)
+
+              if (available.length > 0) {
+                try {
+                  await provider.setModel(acpModelId)
+                } catch (setModelError) {
+                  const fallback =
+                    sessionInfo?.models?.currentModelId ?? available[0]!
+                  console.warn(
+                    `[cursor] setModel("${acpModelId}") failed, using "${fallback}"`,
+                    setModelError,
+                  )
+                  acpModelId = fallback
+                  await provider.setModel(acpModelId)
+                }
+              }
+
+              console.log(
+                `[cursor] model ui="${uiModelId}" acp="${acpModelId}" available=[${available.join(", ")}]`,
+              )
+            } catch (sessionError) {
+              console.warn(
+                `[cursor] session init / model resolution failed, using static map for "${uiModelId}"`,
+                sessionError,
+              )
+              acpModelId = resolveCursorAcpModelId(uiModelId)
+            }
+
             const startedAt = Date.now()
             let latestSessionId =
               provider.getSessionId() ||
@@ -733,7 +769,7 @@ export const cursorRouter = router({
               getLastSessionId(existingMessages)
 
             const result = streamText({
-              model: provider.languageModel(selectedModelId),
+              model: provider.languageModel(acpModelId),
               messages: [
                 {
                   role: "user",

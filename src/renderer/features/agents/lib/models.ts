@@ -42,10 +42,13 @@ export function formatCodexThinkingLabel(thinking: CodexThinkingLevel): string {
 export const CURSOR_MODELS = [
   { id: "composer-2.5", name: "Composer 2.5" },
   { id: "composer-2.5-fast", name: "Composer 2.5 Fast" },
+  { id: "claude-4.6-sonnet-medium", name: "Sonnet 4.6" },
+  { id: "claude-4.6-sonnet-medium-thinking", name: "Sonnet 4.6 Thinking" },
+  { id: "claude-opus-4-8-high", name: "Opus 4.8" },
+  { id: "gpt-5.5-medium", name: "GPT-5.5" },
+  { id: "gpt-5.4-medium", name: "GPT-5.4" },
+  { id: "gpt-5.3-codex", name: "Codex 5.3" },
   { id: "gemini-3.1-pro", name: "Gemini 3.1 Pro" },
-  { id: "gpt-5", name: "GPT-5" },
-  { id: "sonnet-4", name: "Sonnet 4" },
-  { id: "sonnet-4-thinking", name: "Sonnet 4 Thinking" },
 ]
 
 export const CURSOR_MODEL_IDS = new Set(CURSOR_MODELS.map((model) => model.id))

@@ -66,7 +66,7 @@ import { Button } from "../../../components/ui/button"
 import { AlignJustify } from "lucide-react"
 import { AgentsQuickSwitchDialog } from "../components/agents-quick-switch-dialog"
 import { SubChatsQuickSwitchDialog } from "../components/subchats-quick-switch-dialog"
-import { isDesktopApp } from "../../../lib/utils/platform"
+import { hasLocalCodingBackend, isDesktopApp } from "../../../lib/utils/platform"
 import { remoteTrpc } from "../../../lib/remote-trpc"
 import { SettingsContent } from "../../settings/settings-content"
 // Desktop mock
@@ -840,7 +840,7 @@ export function AgentsContent() {
 
   // Check if terminal can be shown (worktree exists - desktop only)
   const worktreePath = (chatData as any)?.worktreePath as string | undefined
-  const canShowTerminal = isDesktopApp() && !!worktreePath
+  const canShowTerminal = hasLocalCodingBackend() && !!worktreePath
 
   // Terminal scope key for shared terminals
   const terminalScopeKey = useMemo(() => {

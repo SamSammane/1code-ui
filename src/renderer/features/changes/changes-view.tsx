@@ -27,7 +27,7 @@ import { useChangesStore } from "../../lib/stores/changes-store";
 import { usePRStatus } from "../../hooks/usePRStatus";
 import { useFileChangeListener } from "../../lib/hooks/use-file-change-listener";
 import type { ChangeCategory, ChangedFile } from "../../../shared/changes-types";
-import { cn } from "../../lib/utils";
+import { ChangesPreviewBanner } from "../../components/changes-preview-banner";
 import { ChangesFileFilter, type SubChatFilterItem } from "./components/changes-file-filter";
 import { CommitInput } from "./components/commit-input";
 import { HistoryView, type CommitInfo } from "./components/history-view";
@@ -895,6 +895,7 @@ export function ChangesView({
 
 	return (
 			<>
+				<ChangesPreviewBanner />
 				<div className="flex flex-col h-full">
 					<Tabs
 						value={activeTab}

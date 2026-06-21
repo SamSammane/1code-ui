@@ -2,6 +2,7 @@
  * Shared configuration for the desktop app
  */
 import { app } from "electron"
+import { getMainViteEnv, getMainViteEnvString } from "./vite-main-env"
 
 const IS_DEV = !!process.env.ELECTRON_RENDERER_URL
 const DEFAULT_VENDOR_API = "https://21st.dev"
@@ -16,7 +17,7 @@ function parseEnvBool(value: string | undefined, defaultValue: boolean): boolean
  * Defaults to false so local/open-source builds run without a vendor account.
  */
 export function isVendorAuthEnabled(): boolean {
-  return parseEnvBool(import.meta.env.MAIN_VITE_VENDOR_AUTH, false)
+  return parseEnvBool(getMainViteEnv().MAIN_VITE_VENDOR_AUTH, false)
 }
 
 /**
@@ -31,10 +32,15 @@ export function canAccessApp(isAuthenticated: boolean): boolean {
  * Returns an empty string in standalone mode unless MAIN_VITE_API_URL is set.
  */
 export function getApiUrl(): string {
-  const configured = import.meta.env.MAIN_VITE_API_URL as string | undefined
+  const configured = getMainViteEnvString("MAIN_VITE_API_URL")
   if (configured) return configured
   if (isVendorAuthEnabled()) return DEFAULT_VENDOR_API
   return ""
+}
+
+/** Alias used by sandbox import and auth flows */
+export function getBaseUrl(): string {
+  return getApiUrl()
 }
 
 /**

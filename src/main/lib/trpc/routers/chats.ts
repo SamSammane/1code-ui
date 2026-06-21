@@ -4,7 +4,7 @@ import * as fs from "fs/promises"
 import * as path from "path"
 import simpleGit from "simple-git"
 import { z } from "zod"
-import { getAuthManager } from "../../../index"
+import { getAuthManager } from "../../../auth-manager"
 import {
   trackPRCreated,
   trackWorkspaceArchived,
@@ -34,10 +34,17 @@ type WorktreeSetupFailurePayload = {
   projectId: string
 }
 
+/** Buffered for web-server clients (no Electron IPC). */
+const pendingWorktreeFailures: WorktreeSetupFailurePayload[] = []
+
 function sendWorktreeSetupFailure(
   windowId: number | null,
   payload: WorktreeSetupFailurePayload,
 ): void {
+  if (process.env.WEB_STANDALONE_SERVER === "1") {
+    pendingWorktreeFailures.push(payload)
+  }
+
   const targets: BrowserWindow[] = []
 
   if (windowId !== null) {
@@ -2193,4 +2200,13 @@ export const chatsRouter = router({
         subChatCount: chatSubChats.length,
       }
     }),
+
+  /**
+   * Poll worktree setup failures (web-server mode; desktop uses IPC).
+   */
+  pollWorktreeSetupFailures: publicProcedure.query(() => {
+    const items = [...pendingWorktreeFailures]
+    pendingWorktreeFailures.length = 0
+    return items
+  }),
 })

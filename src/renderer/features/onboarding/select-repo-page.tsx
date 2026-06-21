@@ -8,7 +8,8 @@ import { IconSpinner, GitHubIcon } from "../../components/ui/icons"
 import { Logo } from "../../components/ui/logo"
 import { Input } from "../../components/ui/input"
 import { trpc } from "../../lib/trpc"
-import { isWebStandalone } from "../../lib/utils/platform"
+import { isWebApiBackendEnabled } from "../../lib/trpc-links"
+import { isWebStandalone, isWebStubMode } from "../../lib/utils/platform"
 import { WebModeBanner } from "../../components/web-mode-banner"
 import { selectedProjectAtom } from "../agents/atoms"
 
@@ -18,6 +19,7 @@ export function SelectRepoPage() {
   const [githubUrl, setGithubUrl] = useState("")
   const [projectPath, setProjectPath] = useState("")
   const isWeb = isWebStandalone()
+  const canCloneFromGitHub = !isWebStubMode()
 
   // Get tRPC utils for cache management
   const utils = trpc.useUtils()
@@ -269,6 +271,19 @@ export function SelectRepoPage() {
                   "Add project"
                 )}
               </button>
+              {canCloneFromGitHub && (
+                <button
+                  onClick={() => setShowClonePage(true)}
+                  disabled={cloneFromGitHub.isPending}
+                  className="w-full h-8 px-4 bg-muted text-foreground rounded-lg text-sm font-medium transition-[background-color,transform] duration-150 hover:bg-muted/80 active:scale-[0.97] shadow-[0_0_0_0.5px_rgb(23,23,23),inset_0_0_0_1px_rgba(255,255,255,0.06)] dark:shadow-[0_0_0_0.5px_rgb(23,23,23),inset_0_0_0_1px_rgba(255,255,255,0.06)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                >
+                  {cloneFromGitHub.isPending ? (
+                    <IconSpinner className="h-4 w-4" />
+                  ) : (
+                    "Clone from GitHub"
+                  )}
+                </button>
+              )}
             </>
           ) : (
             <>

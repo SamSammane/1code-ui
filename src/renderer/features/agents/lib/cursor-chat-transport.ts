@@ -29,14 +29,14 @@ type ImageAttachment = {
 }
 
 const forceFreshSessionSubChats = new Set<string>()
-const DEFAULT_CURSOR_MODEL = "composer-2.5"
+import { DEFAULT_CURSOR_UI_MODEL } from "../../../../shared/cursor-model-id"
 
 function getSelectedCursorModel(subChatId: string): string {
   const selectedModelId = appStore.get(subChatCursorModelIdAtomFamily(subChatId))
   const selectedModel =
     CURSOR_MODELS.find((model) => model.id === selectedModelId) || CURSOR_MODELS[0]
 
-  return selectedModel?.id || DEFAULT_CURSOR_MODEL
+  return selectedModel?.id || DEFAULT_CURSOR_UI_MODEL
 }
 
 export class CursorChatTransport implements ChatTransport<UIMessage> {
